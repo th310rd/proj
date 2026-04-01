@@ -1,0 +1,473 @@
+You are a Senior Java 21 / Spring Boot Microservices Engineer and Software Architect.
+
+Generate a production-style, clean, modular **Listing Service** for a P2P car-sharing platform similar to Turo, localized for **Uzbekistan**.
+
+Tech constraints:
+- Java 21
+- Spring Boot 3.x
+- PostgreSQL
+- Maven
+- Spring Data JPA
+- Bean Validation
+- Lombok
+- REST API
+- Docker-ready structure
+- Clean Architecture / DDD-inspired package organization
+- Use DTOs, service layer, repository layer, controller layer
+- Code must be suitable for a **graduation project defense**
+- Keep the code readable, modular, and easy to explain in viva
+
+Main scope of this service:
+1. Display available cars to renters
+2. Filter out cars that do not match renter dates
+3. Filter out cars that do not match renter qualifications
+4. Provide search and listing APIs for the frontend
+5. Act as a read/query-oriented service for car discovery
+
+This service must integrate logically with:
+- **Car Service**
+- **User Service**
+- optionally later **Geo-Tracking Service**
+- later **Rental Service**
+
+Do not over-engineer. Keep it professional but defendable for a student graduation project.
+
+==================================================
+1. BUSINESS CONTEXT
+==================================================
+This is a car-sharing platform where:
+- Owners register cars in Car Service
+- Car Service stores car data, availability periods, daily rate, and owner-defined rules
+- User Service stores renter profile and driver-related validation data
+- Listing Service helps renters search for cars they are eligible to book
+- Rental Service is the final authority for booking validation, but Listing Service should do pre-filtering for better UX
+
+Important:
+- Listing Service is primarily a **read/query service**
+- It should not own booking transactions
+- It should fetch cars from Car Service and renter profile from User Service
+- It should evaluate listing eligibility before showing cars to the renter
+- Final booking validation still belongs to Rental Service
+- Keep the design extensible for future caching, search indexing, and pagination
+
+==================================================
+2. PROJECT STRUCTURE
+==================================================
+Create a clean package structure like:
+
+com.example.listingservice
+  - controller
+  - service
+  - domain
+  - dto
+  - repository
+  - integration
+      - car
+      - user
+  - rules
+  - filter
+  - exception
+  - config
+
+If feature-based organization is better, keep it simple and easy to defend.
+
+==================================================
+3. DESIGN APPROACH
+==================================================
+This Listing Service may be implemented in one of two ways:
+1. Fully live query service using integration clients to Car Service and User Service
+2. Lightweight projection/read model persisted locally in PostgreSQL for faster listing queries
+
+For this graduation project, implement a **simple defendable hybrid approach**:
+- Listing table in PostgreSQL to store search-friendly car snapshots
+- Integration clients to Car Service and User Service
+- A sync/import service that can create/update listing projections from Car Service data
+- Eligibility filtering in service layer
+
+This makes the architecture easier to defend:
+- Car Service remains source of truth
+- Listing Service is optimized for search/read operations
+
+==================================================
+4. DOMAIN MODEL
+==================================================
+Design PostgreSQL entities for:
+
+A. CarListing
+Fields:
+- id : UUID
+- carId : UUID unique
+- ownerId : UUID
+- brand : String
+- model : String
+- year : Integer
+- city : String
+- color : String
+- transmissionType : String or enum
+- fuelType : String or enum
+- seatCount : Integer
+- dailyRate : BigDecimal
+- currency : String
+- carStatus : String
+- techInspectionExpiry : LocalDate
+- insuranceExpiry : LocalDate
+- active : boolean
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+B. ListingRuleSnapshot
+Fields:
+- id : UUID
+- carId : UUID
+- ruleType : enum
+- operator : enum
+- ruleValue : String
+- discountPercent : BigDecimal nullable
+- isMandatory : boolean
+- isActive : boolean
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+Optional:
+You may create a simple ListingSyncLog if useful, but do not overcomplicate.
+
+==================================================
+5. ENUMS
+==================================================
+Generate enums for:
+- ListingEligibilityStatus
+- RuleType
+- RuleOperator
+
+ListingEligibilityStatus should include:
+- ELIGIBLE
+- NOT_ELIGIBLE
+- PARTIALLY_ELIGIBLE
+
+RuleType should include:
+- MIN_DRIVER_EXPERIENCE_YEARS
+- CITY_ONLY
+- MIN_AGE
+- REQUIRES_VERIFIED_PROFILE
+- NO_BORDER_CROSSING
+
+RuleOperator should include:
+- GTE
+- LTE
+- EQ
+- BOOLEAN_TRUE
+
+==================================================
+6. DATABASE DESIGN
+==================================================
+Generate:
+- JPA entities
+- repositories
+- suggested PostgreSQL schema overview
+- useful indexes on:
+  - carId unique
+  - ownerId
+  - city
+  - active
+  - dailyRate
+  - carStatus
+  - carId in rule snapshot
+  - ruleType
+
+==================================================
+7. INTEGRATION CONTRACTS
+==================================================
+Generate DTOs/interfaces for external service calls.
+
+A. Car Service client
+Need methods:
+- getAllActiveCars()
+- getCarValidationSnapshot(UUID carId)
+- getActiveRules(UUID carId)
+- isCarAvailable(UUID carId, LocalDate startDate, LocalDate endDate)
+
+Car snapshot should contain:
+- carId
+- ownerId
+- brand
+- model
+- year
+- city
+- color
+- transmissionType
+- fuelType
+- seatCount
+- dailyRate
+- currency
+- techInspectionExpiry
+- insuranceExpiry
+- active status / car status
+
+B. User Service client
+Need methods:
+- getRenterProfile(UUID renterId)
+
+Renter profile should contain:
+- renterId
+- dateOfBirth
+- driverLicenseExpiry
+- drivingExperienceYears
+- verifiedProfile
+- homeCity optional
+
+For now, external integrations may be interfaces + stub implementations.
+Keep them ready for later Feign/WebClient replacement.
+
+==================================================
+8. MAIN API REQUIREMENTS
+==================================================
+Implement these REST endpoints.
+
+A. Search eligible listings
+GET /api/listings/search
+
+Query params:
+- renterId optional
+- city optional
+- startDate required
+- endDate required
+- minDailyRate optional
+- maxDailyRate optional
+- transmissionType optional
+- fuelType optional
+- minSeatCount optional
+- sortBy optional (dailyRate, year)
+- sortDirection optional (asc, desc)
+- page optional
+- size optional
+
+Behavior:
+1. load listing candidates from CarListing table
+2. filter by search criteria
+3. if renterId is present:
+   - fetch renter profile
+   - evaluate owner rules against renter
+4. check date availability through Car Service
+5. exclude listings that are not available or not eligible
+6. return paginated eligible cars
+
+B. Get listing by carId
+GET /api/listings/{carId}
+
+C. Sync one car from Car Service into Listing projection
+POST /api/listings/sync/{carId}
+
+D. Sync all active cars from Car Service
+POST /api/listings/sync
+
+E. Preview eligibility for one car and renter
+GET /api/listings/{carId}/eligibility?renterId=...&startDate=...&endDate=...
+
+Response should include:
+- carId
+- renterId
+- eligibilityStatus
+- available
+- matchedRules
+- failedRules
+- warnings
+
+==================================================
+9. BUSINESS RULES
+==================================================
+Implement and document these rules:
+
+1. startDate must be before endDate
+2. rental period must be at least 1 day
+3. only active listings should appear in search
+4. only cars with non-expired tech inspection should appear
+5. only cars with non-expired insurance should appear
+6. if Car Service says car is unavailable for date range, do not show it
+7. if renterId is provided, only show cars whose mandatory rules are satisfied
+8. non-mandatory rules may be included as informational notes
+9. CITY_ONLY rule should compare requested city / pickup city if provided, otherwise renter home city if available
+10. Listing Service is only pre-filtering; Rental Service will still re-validate during booking
+
+==================================================
+10. SEARCH / FILTER LOGIC
+==================================================
+Create a clean filtering flow using dedicated classes.
+
+Possible components:
+- ListingSearchService
+- ListingEligibilityService
+- ListingRuleEvaluator
+- ListingSyncService
+
+Filtering stages:
+1. database-level filtering by city, price range, transmission, fuel, seat count, active flag
+2. date availability check via Car Service
+3. renter profile qualification check via rules engine
+4. sorting and pagination
+5. response mapping
+
+Keep the code easy to explain.
+
+==================================================
+11. RULE EVALUATION
+==================================================
+Implement rule evaluation logic for:
+- MIN_DRIVER_EXPERIENCE_YEARS
+- MIN_AGE
+- REQUIRES_VERIFIED_PROFILE
+- CITY_ONLY
+- NO_BORDER_CROSSING
+
+Requirements:
+- return structured matched and failed rules
+- only active rules should be evaluated
+- mandatory failed rules make listing NOT_ELIGIBLE
+- NO_BORDER_CROSSING can be returned as warning for future geo-tracking integration
+- design so more rules can be added later
+
+Create:
+- EligibilityResult
+- RuleEvaluationResult
+- ListingRuleEvaluator
+
+==================================================
+12. DTOs
+==================================================
+Generate DTOs for:
+- CarListingResponse
+- ListingSearchResponse
+- ListingSearchItemResponse
+- ListingEligibilityResponse
+- ListingRuleResponse
+- EligibilityRuleResultResponse
+- SyncListingResponse
+- SearchListingsRequest if you prefer request object internally
+
+Use Bean Validation where appropriate.
+
+==================================================
+13. REPOSITORY LAYER
+==================================================
+Create repositories for:
+- CarListingRepository
+- ListingRuleSnapshotRepository
+
+CarListingRepository should support filtered query methods or Specification-based search.
+If you choose Specification API, keep it simple and explainable.
+
+==================================================
+14. SERVICE LAYER
+==================================================
+Create service classes with clear responsibilities:
+
+- ListingSearchService
+  - searchEligibleListings(...)
+  - getListingByCarId(...)
+  - previewEligibility(...)
+
+- ListingEligibilityService
+  - evaluateEligibility(...)
+
+- ListingRuleEvaluator
+  - evaluateRules(...)
+
+- ListingSyncService
+  - syncCar(UUID carId)
+  - syncAllActiveCars()
+
+Keep service logic modular and understandable.
+
+==================================================
+15. CONTROLLER LAYER
+==================================================
+Generate REST controllers for:
+- listing search
+- single listing view
+- sync endpoints
+- eligibility preview endpoint
+
+Possible endpoints:
+- GET /api/listings/search
+- GET /api/listings/{carId}
+- GET /api/listings/{carId}/eligibility
+- POST /api/listings/sync/{carId}
+- POST /api/listings/sync
+
+==================================================
+16. EXCEPTION HANDLING
+==================================================
+Generate:
+- ResourceNotFoundException
+- BusinessValidationException
+- GlobalExceptionHandler with @RestControllerAdvice
+
+Validation failure responses should be clean JSON like:
+{
+  "message": "Listing search validation failed",
+  "errors": [
+    {
+      "code": "INVALID_DATE_RANGE",
+      "message": "Start date must be before end date"
+    }
+  ],
+  "timestamp": "..."
+}
+
+==================================================
+17. MAPPING
+==================================================
+Use either:
+- manual mapper classes
+or
+- MapStruct if you prefer
+
+But keep it simple and explainable for a student project.
+
+==================================================
+18. CODE STYLE
+==================================================
+Requirements:
+- clean code
+- modular
+- no unnecessary complexity
+- beginner-defensible but professional
+- add short comments only where useful
+- do not over-engineer
+- methods should be understandable in viva/defense
+
+==================================================
+19. OUTPUT FORMAT
+==================================================
+Return the result in this exact order:
+
+1. Short architecture explanation
+2. Package structure
+3. Entity classes
+4. Enums
+5. DTO classes
+6. Integration DTOs and client interfaces
+7. Repository interfaces
+8. Rule evaluation classes
+9. Service classes
+10. Controller classes
+11. Exception handling
+12. Example application.yml
+13. Example PostgreSQL schema overview
+14. Example request/response JSON
+15. Short explanation of how Rental Service will still perform final validation even after Listing Service filtering
+
+==================================================
+20. IMPORTANT IMPLEMENTATION NOTES
+==================================================
+- Use Java 21 features where appropriate, but do not make code too advanced
+- Use LocalDate for availability and expiry dates
+- Use LocalDateTime for audit fields
+- Use UUID properly
+- Use BigDecimal for money
+- Make sure listings and rule snapshots are query-friendly
+- Keep external integrations replaceable
+- Make sure code compiles logically
+- Do not omit key classes
+- If output is too long, continue in multiple parts without skipping code
+
+Now generate the full Listing Service implementation.
