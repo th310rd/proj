@@ -1,0 +1,566 @@
+You are a Senior Java 21 / Spring Boot Microservices Engineer and Software Architect.
+
+Generate a production-style, clean, modular **Geo-Tracking Service** for a P2P car-sharing platform similar to Turo, localized for **Uzbekistan**.
+
+Tech constraints:
+- Java 21
+- Spring Boot 3.x
+- PostgreSQL
+- Maven
+- Spring Data JPA
+- Bean Validation
+- Lombok
+- REST API
+- Docker-ready structure
+- Clean Architecture / DDD-inspired package organization
+- Use DTOs, service layer, repository layer, controller layer
+- Code must be suitable for a **graduation project defense**
+- Keep the code readable, modular, and easy to explain in viva
+
+Main scope of this service:
+1. Real-time or simulated vehicle location tracking
+2. Pickup location visibility for renter
+3. Live vehicle monitoring for owner
+4. Route history storage
+5. Basic geofence / rule-awareness support
+6. APIs for current location and trip route playback
+7. Support future integration with Rental Service and Notification Service
+
+This service must integrate logically with:
+- **Rental Service**
+- **Car Service**
+- later **Notification Service**
+- later **mobile/web clients using WebSocket or polling**
+
+Do not over-engineer. Keep it professional but defendable for a student graduation project.
+
+==================================================
+1. BUSINESS CONTEXT
+==================================================
+This is a car-sharing platform where:
+- owners want to see where their rented vehicle is
+- renters want to know where to pick up the car
+- the platform may later enforce owner geo-related rules such as:
+  - city-only driving
+  - no border crossing
+- Geo-Tracking Service should provide:
+  - current vehicle location
+  - historical trip points
+  - simulated live movement if real GPS integration is absent
+
+Important:
+- This is a graduation project, so real GPS device integration is NOT required
+- You should implement a realistic **simulated tracking system**
+- The system should still be designed so real GPS/mobile SDK integration can be added later
+- The service should track active rentals only
+- Rental Service remains the source of truth for whether a rental is ACTIVE or CONFIRMED
+- Geo-Tracking Service should be able to store and expose route history
+
+==================================================
+2. PROJECT STRUCTURE
+==================================================
+Create a clean package structure like:
+
+com.example.geotrackingservice
+  - controller
+  - service
+  - domain
+  - dto
+  - repository
+  - integration
+      - rental
+      - car
+  - simulation
+  - geofence
+  - exception
+  - config
+
+If feature-based organization is better, keep it simple and easy to defend.
+
+==================================================
+3. DESIGN APPROACH
+==================================================
+Implement a simple, defendable hybrid design:
+- PostgreSQL stores current locations and location history
+- REST APIs expose current and historical tracking data
+- optional simple scheduler simulates movement updates
+- architecture ready for later WebSocket streaming
+
+Keep it clear:
+- Current vehicle location = latest known point
+- Route history = ordered historical coordinates
+- Tracking session = one active rental trip context
+
+==================================================
+4. DOMAIN MODEL
+==================================================
+Design PostgreSQL entities for:
+
+A. TrackingSession
+Fields:
+- id : UUID
+- rentalId : UUID unique
+- carId : UUID
+- ownerId : UUID
+- renterId : UUID
+- sessionStatus : enum
+- startedAt : LocalDateTime
+- endedAt : LocalDateTime nullable
+- currentLatitude : BigDecimal nullable
+- currentLongitude : BigDecimal nullable
+- currentSpeedKph : BigDecimal nullable
+- currentAddress : String nullable
+- lastUpdatedAt : LocalDateTime nullable
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+B. LocationPoint
+Fields:
+- id : UUID
+- trackingSessionId : UUID
+- rentalId : UUID
+- latitude : BigDecimal
+- longitude : BigDecimal
+- speedKph : BigDecimal nullable
+- headingDegrees : BigDecimal nullable
+- sourceType : enum
+- pointTimestamp : LocalDateTime
+- addressLabel : String nullable
+- insideAllowedZone : Boolean nullable
+- createdAt : LocalDateTime
+
+C. GeofenceRuleSnapshot
+Fields:
+- id : UUID
+- rentalId : UUID
+- carId : UUID
+- ruleType : enum
+- ruleValue : String
+- isActive : boolean
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+Optional:
+D. GeofenceEvent
+Fields:
+- id : UUID
+- rentalId : UUID
+- trackingSessionId : UUID
+- eventType : enum
+- message : String
+- latitude : BigDecimal nullable
+- longitude : BigDecimal nullable
+- createdAt : LocalDateTime
+
+Only add GeofenceEvent if it helps and keep it simple.
+
+==================================================
+5. ENUMS
+==================================================
+Generate enums for:
+- TrackingSessionStatus
+- LocationSourceType
+- GeofenceRuleType
+- GeofenceEventType
+
+TrackingSessionStatus should include:
+- PENDING
+- ACTIVE
+- PAUSED
+- ENDED
+
+LocationSourceType should include:
+- SIMULATED
+- MANUAL
+- DEVICE
+
+GeofenceRuleType should include:
+- CITY_ONLY
+- NO_BORDER_CROSSING
+
+GeofenceEventType should include:
+- LEFT_ALLOWED_CITY
+- BORDER_PROXIMITY_WARNING
+- TRACKING_STARTED
+- TRACKING_ENDED
+
+If you do not create GeofenceEvent entity, still define GeofenceEventType for extensibility.
+
+==================================================
+6. DATABASE DESIGN
+==================================================
+Generate:
+- JPA entities
+- repositories
+- suggested PostgreSQL schema overview
+- useful indexes on:
+  - rentalId
+  - carId
+  - ownerId
+  - renterId
+  - trackingSessionId
+  - pointTimestamp
+  - sessionStatus
+
+==================================================
+7. INTEGRATION CONTRACTS
+==================================================
+Generate DTOs/interfaces for integration with external services.
+
+A. Rental Service client
+Need methods:
+- getRentalById(UUID rentalId)
+
+Rental snapshot should include:
+- rentalId
+- carId
+- ownerId
+- renterId
+- startDate
+- endDate
+- pickupCity optional
+- status
+
+Important:
+- tracking session should only be started for valid rentals
+- recommended statuses for starting tracking:
+  - CONFIRMED
+  - ACTIVE
+- if rental becomes COMPLETED or CANCELLED, tracking may be ended
+
+B. Car Service client
+Need methods:
+- getCarValidationSnapshot(UUID carId)
+- getActiveRules(UUID carId)
+
+Car snapshot/rules should support:
+- city
+- active rules such as CITY_ONLY and NO_BORDER_CROSSING
+
+For now, external integrations may be interfaces + stub implementations.
+Keep them ready for later Feign/WebClient replacement.
+
+==================================================
+8. MAIN API REQUIREMENTS
+==================================================
+Implement these REST endpoints.
+
+A. Start tracking session
+POST /api/tracking/sessions/start
+
+Request:
+- rentalId
+- initialLatitude optional
+- initialLongitude optional
+- currentAddress optional
+
+Behavior:
+1. fetch rental snapshot
+2. validate rental can be tracked
+3. create tracking session with status ACTIVE
+4. optionally load geofence rule snapshots from Car Service
+5. optionally create first location point if coordinates provided
+
+B. End tracking session
+POST /api/tracking/sessions/{rentalId}/end
+
+Behavior:
+- mark session as ENDED
+- set endedAt
+- optionally create TRACKING_ENDED event
+
+C. Add location point manually
+POST /api/tracking/locations
+
+Request:
+- rentalId
+- latitude
+- longitude
+- speedKph optional
+- headingDegrees optional
+- pointTimestamp optional
+- addressLabel optional
+- sourceType
+
+Behavior:
+- find active tracking session
+- append new location point
+- update current location in tracking session
+- evaluate geofence rules
+
+D. Get current vehicle location by rental
+GET /api/tracking/rentals/{rentalId}/current
+
+Response should include:
+- rentalId
+- trackingSessionStatus
+- latitude
+- longitude
+- speedKph
+- currentAddress
+- lastUpdatedAt
+
+E. Get route history by rental
+GET /api/tracking/rentals/{rentalId}/history
+
+Optional query params:
+- from
+- to
+- limit
+
+Response:
+- ordered list of points
+
+F. Simulate route for rental
+POST /api/tracking/rentals/{rentalId}/simulate
+
+Request:
+- startLatitude
+- startLongitude
+- endLatitude
+- endLongitude
+- numberOfPoints
+- intervalSeconds optional
+
+Behavior:
+- generate simulated intermediate points
+- store them in order
+- update tracking session current location
+- optionally return generated route
+
+G. Get owner dashboard tracking view
+GET /api/tracking/owners/{ownerId}/active
+
+Behavior:
+- return active tracking sessions for owner cars
+
+H. Get renter pickup map view
+GET /api/tracking/rentals/{rentalId}/pickup-view
+
+Behavior:
+- return current location and essential pickup info for renter
+
+==================================================
+9. BUSINESS RULES
+==================================================
+Implement and document these rules:
+
+1. Tracking session can be started only for an eligible rental status
+2. Only one active tracking session per rental
+3. Location points can only be added to ACTIVE sessions
+4. Ending a session prevents further point additions
+5. Current location in TrackingSession must always reflect latest point
+6. Route history must be ordered by timestamp
+7. Geofence checks should evaluate on each new point
+8. CITY_ONLY rule can compare tracked point against allowed city metadata in simplified form
+9. NO_BORDER_CROSSING can be modeled as warning/placeholder if exact geographic border logic is too heavy
+10. The service should be simulation-friendly and not depend on real GPS providers
+
+==================================================
+10. GEOFENCE / RULE-AWARENESS
+==================================================
+Implement a simple and defendable geofence support layer.
+
+Create:
+- GeofenceEvaluationService
+- GeofenceEvaluationResult
+- optional GeofenceEventService
+
+Rules:
+- CITY_ONLY:
+  - compare tracked point context against allowed city
+  - since exact city polygon lookup may be too advanced, use a simplified placeholder approach:
+    - either compare addressLabel / city label
+    - or document that a real GIS polygon solution can be integrated later
+- NO_BORDER_CROSSING:
+  - produce warning placeholder or simplified event
+  - keep logic future-ready
+
+Important:
+- Keep it realistic enough for defense
+- Do not overcomplicate with full GIS unless simple
+- You may mention that PostGIS can be added later, but keep current implementation plain PostgreSQL if simpler
+
+==================================================
+11. SIMULATION LOGIC
+==================================================
+Implement a simple route simulation feature.
+
+Create:
+- TrackingSimulationService
+
+Simulation behavior:
+- generate evenly distributed intermediate points between start and end coordinates
+- create timestamps incrementally
+- optionally generate approximate speed values
+- store points in database
+- update tracking session current location after each generated point or after batch
+
+Keep the math simple and explainable.
+
+Example:
+If start = (41.3111, 69.2797) and end = (41.2995, 69.2401), generate 10 route points.
+
+==================================================
+12. DTOs
+==================================================
+Generate DTOs for:
+- StartTrackingSessionRequest
+- TrackingSessionResponse
+- AddLocationPointRequest
+- CurrentLocationResponse
+- LocationPointResponse
+- RouteHistoryResponse
+- SimulateRouteRequest
+- OwnerActiveTrackingResponse
+- PickupViewResponse
+- StatusTransitionResponse
+- GeofenceEvaluationResponse optional
+
+Use Bean Validation annotations.
+
+==================================================
+13. REPOSITORY LAYER
+==================================================
+Create repositories for:
+- TrackingSessionRepository
+- LocationPointRepository
+- GeofenceRuleSnapshotRepository
+- optional GeofenceEventRepository
+
+Need query methods for:
+- find active session by rentalId
+- find active sessions by ownerId
+- find history by rentalId ordered by pointTimestamp
+- latest point lookup if needed
+
+==================================================
+14. SERVICE LAYER
+==================================================
+Create service classes with clear responsibilities:
+
+- TrackingSessionService
+  - startSession
+  - endSession
+  - getCurrentLocation
+  - getOwnerActiveSessions
+  - getPickupView
+
+- LocationTrackingService
+  - addLocationPoint
+  - getRouteHistory
+
+- TrackingSimulationService
+  - simulateRoute
+
+- GeofenceEvaluationService
+  - evaluatePointAgainstRules
+
+- TrackingProjectionMapper or manual mapper classes if needed
+
+Keep methods modular and understandable.
+
+==================================================
+15. CONTROLLER LAYER
+==================================================
+Generate REST controllers for:
+- session start/end
+- add location
+- current location
+- route history
+- simulation
+- owner dashboard view
+- renter pickup view
+
+Possible endpoints:
+- POST /api/tracking/sessions/start
+- POST /api/tracking/sessions/{rentalId}/end
+- POST /api/tracking/locations
+- GET /api/tracking/rentals/{rentalId}/current
+- GET /api/tracking/rentals/{rentalId}/history
+- POST /api/tracking/rentals/{rentalId}/simulate
+- GET /api/tracking/owners/{ownerId}/active
+- GET /api/tracking/rentals/{rentalId}/pickup-view
+
+==================================================
+16. EXCEPTION HANDLING
+==================================================
+Generate:
+- ResourceNotFoundException
+- BusinessValidationException
+- InvalidTrackingStateException
+- GlobalExceptionHandler with @RestControllerAdvice
+
+Validation failure responses should be clean JSON like:
+{
+  "message": "Tracking session creation failed",
+  "errors": [
+    {
+      "code": "INVALID_RENTAL_STATUS",
+      "message": "Tracking can only be started for CONFIRMED or ACTIVE rentals"
+    }
+  ],
+  "timestamp": "..."
+}
+
+==================================================
+17. REAL-TIME EXTENSIBILITY
+==================================================
+Prepare the design for future real-time support.
+
+Requirements:
+- current implementation may use REST polling
+- mention how WebSocket can be added later
+- optionally add placeholder interface for pushing updates
+- do not fully implement WebSocket unless as lightweight optional section
+
+Keep the current implementation simple and stable.
+
+==================================================
+18. CODE STYLE
+==================================================
+Requirements:
+- clean code
+- modular
+- no unnecessary complexity
+- beginner-defensible but professional
+- add short comments only where useful
+- do not over-engineer
+- methods should be understandable in viva/defense
+
+==================================================
+19. OUTPUT FORMAT
+==================================================
+Return the result in this exact order:
+
+1. Short architecture explanation
+2. Package structure
+3. Entity classes
+4. Enums
+5. DTO classes
+6. Integration DTOs and client interfaces
+7. Repository interfaces
+8. Geofence and simulation classes
+9. Service classes
+10. Controller classes
+11. Exception handling
+12. Example application.yml
+13. Example PostgreSQL schema overview
+14. Example request/response JSON
+15. Short explanation of how WebSocket, PostGIS, and Notification Service can be added later
+
+==================================================
+20. IMPORTANT IMPLEMENTATION NOTES
+==================================================
+- Use Java 21 features where appropriate, but do not make code too advanced
+- Use LocalDateTime for timestamps
+- Use UUID properly
+- Use BigDecimal for latitude, longitude, speed, heading if preferred for consistency
+- Keep simulation simple and explainable
+- Keep current-location and history responsibilities clear
+- Keep external integrations replaceable
+- Make sure code compiles logically
+- Do not omit key classes
+- If output is too long, continue in multiple parts without skipping code
+
+Now generate the full Geo-Tracking Service implementation.
