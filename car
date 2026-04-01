@@ -1,0 +1,361 @@
+You are a Senior Java 21 / Spring Boot Microservices Engineer and Software Architect.
+
+Generate a production-style, clean, modular **Car Service** for a P2P car-sharing platform similar to Turo, localized for **Uzbekistan**.
+
+Tech constraints:
+- Java 21
+- Spring Boot 3.x
+- PostgreSQL
+- Maven
+- JPA / Hibernate
+- Bean Validation
+- Lombok
+- REST API
+- Docker-ready structure
+- Clean Architecture / DDD-inspired package organization
+- Use DTOs, service layer, repository layer, controller layer
+- Write code suitable for a **graduation project defense**
+- Code must be readable, well-structured, and easy to explain
+
+Goal of this service:
+The Car Service manages:
+1. Vehicle registration by owners
+2. Vehicle data updates
+3. Daily rent rate updates
+4. Basic car availability checks for date ranges
+5. Vehicle document tracking:
+   - technical inspection expiration
+   - insurance expiration
+6. Owner-defined rental rules:
+   - drive only inside city limits
+   - minimum driver experience (example: 3+ years)
+   - minimum renter age
+   - verified profile required
+7. Exposing APIs needed by Listing Service and Rental Service
+
+Important business context:
+- This is one microservice in a larger platform
+- Authentication may be handled elsewhere, so for now ownerId can come in request DTOs
+- Do not implement security yet unless as simple placeholder
+- Focus on domain correctness, maintainability, and API clarity
+- Use UUID IDs
+- Currency should support UZS
+- Daily rate must be stored as BigDecimal
+- Availability should be checked against bookings/rental periods passed into this service logic
+- Keep the service extensible for later integration with Rental Service
+
+Please generate the following:
+
+==================================================
+1. PROJECT STRUCTURE
+==================================================
+Create a clean package structure like:
+
+com.example.carservice
+  - controller
+  - service
+  - domain
+  - dto
+  - repository
+  - mapper
+  - exception
+  - config
+
+If better, you may use feature-based structure, but keep it simple and defendable.
+
+==================================================
+2. DOMAIN MODEL
+==================================================
+Design the main entities for PostgreSQL:
+
+A. Car
+Fields:
+- id : UUID
+- ownerId : UUID
+- brand : String
+- model : String
+- year : Integer
+- plateNumber : String
+- city : String
+- color : String
+- transmissionType : enum
+- fuelType : enum
+- seatCount : Integer
+- dailyRate : BigDecimal
+- currency : String
+- techInspectionExpiry : LocalDate
+- insuranceExpiry : LocalDate
+- status : enum (ACTIVE, INACTIVE, BLOCKED)
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+B. CarAvailability
+Fields:
+- id : UUID
+- carId : UUID
+- startDate : LocalDate
+- endDate : LocalDate
+- status : enum (RESERVED, BOOKED, BLOCKED)
+
+C. CarRule
+Fields:
+- id : UUID
+- carId : UUID
+- ownerId : UUID
+- ruleType : enum
+- operator : enum
+- ruleValue : String
+- discountPercent : BigDecimal nullable
+- isMandatory : boolean
+- isActive : boolean
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+Use proper JPA annotations and relations.
+
+==================================================
+3. ENUMS
+==================================================
+Generate enums for:
+- CarStatus
+- TransmissionType
+- FuelType
+- AvailabilityStatus
+- RuleType
+- RuleOperator
+
+RuleType should include at minimum:
+- MIN_DRIVER_EXPERIENCE_YEARS
+- CITY_ONLY
+- MIN_AGE
+- REQUIRES_VERIFIED_PROFILE
+- NO_BORDER_CROSSING
+
+RuleOperator should include:
+- GTE
+- LTE
+- EQ
+- BOOLEAN_TRUE
+
+==================================================
+4. DATABASE DESIGN
+==================================================
+Generate:
+- Entity classes
+- JPA repositories
+- Suggested PostgreSQL DDL or explain what tables will be created
+- Useful indexes:
+  - on ownerId
+  - on carId
+  - on availability date range
+  - on active rules
+
+==================================================
+5. API REQUIREMENTS
+==================================================
+Implement these REST endpoints.
+
+A. Register a car
+POST /api/cars
+
+Request:
+- ownerId
+- brand
+- model
+- year
+- plateNumber
+- city
+- color
+- transmissionType
+- fuelType
+- seatCount
+- dailyRate
+- currency
+- techInspectionExpiry
+- insuranceExpiry
+
+Response:
+- created car data
+
+B. Get car by id
+GET /api/cars/{carId}
+
+C. Get owner cars
+GET /api/cars/owner/{ownerId}
+
+D. Update car details
+PUT /api/cars/{carId}
+
+E. Update daily rent rate
+PATCH /api/cars/{carId}/daily-rate
+
+Request body:
+{
+  "dailyRate": 450000,
+  "currency": "UZS"
+}
+
+F. Add owner rule
+POST /api/cars/{carId}/rules
+
+G. Get active rules of a car
+GET /api/cars/{carId}/rules
+
+H. Replace/update rules of a car
+PUT /api/cars/{carId}/rules
+
+I. Add blocked/reserved date range
+POST /api/cars/{carId}/availability
+
+J. Check availability for a date range
+GET /api/cars/{carId}/availability/check?startDate=2026-05-01&endDate=2026-05-05
+
+Response example:
+{
+  "carId": "...",
+  "available": true,
+  "reason": null
+}
+
+K. API for Rental Service to get car validation snapshot
+GET /api/cars/{carId}/validation-snapshot
+
+Response should include:
+- carId
+- ownerId
+- dailyRate
+- currency
+- techInspectionExpiry
+- insuranceExpiry
+- active status
+- active rules
+
+==================================================
+6. BUSINESS RULES
+==================================================
+Implement and document these rules:
+
+1. A car cannot be registered with techInspectionExpiry in the past
+2. A car cannot be registered with insuranceExpiry in the past
+3. Daily rate must be positive
+4. Seat count must be positive
+5. Plate number must be unique
+6. Availability date ranges must not overlap with existing BOOKED or BLOCKED periods
+7. A BLOCKED or BOOKED period makes the car unavailable for those dates
+8. Only ACTIVE cars can be returned as available for listing
+9. Rules should only be returned if isActive = true
+10. Rule creation must validate that the ruleType/operator pair makes sense
+
+Example:
+- MIN_DRIVER_EXPERIENCE_YEARS should usually use GTE
+- REQUIRES_VERIFIED_PROFILE should use BOOLEAN_TRUE
+
+==================================================
+7. DTOs
+==================================================
+Generate separate DTOs for:
+- CreateCarRequest
+- UpdateCarRequest
+- CarResponse
+- UpdateDailyRateRequest
+- CreateCarRuleRequest
+- CarRuleResponse
+- CreateAvailabilityRequest
+- AvailabilityCheckResponse
+- CarValidationSnapshotResponse
+
+Use Bean Validation annotations in request DTOs.
+
+==================================================
+8. SERVICE LAYER
+==================================================
+Create service classes with clear responsibilities:
+
+- CarService
+  - registerCar
+  - getCarById
+  - getCarsByOwner
+  - updateCar
+  - updateDailyRate
+
+- CarRuleService
+  - addRule
+  - replaceRules
+  - getActiveRules
+
+- CarAvailabilityService
+  - addAvailabilityBlock
+  - isCarAvailable
+
+Ensure service-layer validation is clean and explainable.
+
+==================================================
+9. EXCEPTION HANDLING
+==================================================
+Generate:
+- custom exceptions
+- global exception handler using @RestControllerAdvice
+
+Need to handle:
+- resource not found
+- invalid request/business rule violation
+- overlapping availability range
+- duplicate plate number
+
+Return clean JSON error responses.
+
+==================================================
+10. MAPPING
+==================================================
+Use either:
+- manual mapper classes
+or
+- MapStruct if you prefer
+
+But keep it simple and explainable for a student project.
+
+==================================================
+11. CODE STYLE
+==================================================
+Requirements:
+- clean code
+- modular
+- no unnecessary complexity
+- beginner-defensible but professional
+- add short comments only where useful
+- do not over-engineer
+- methods should be understandable in viva/defense
+
+==================================================
+12. OUTPUT FORMAT
+==================================================
+Return the result in this exact order:
+
+1. Short architecture explanation
+2. Package structure
+3. Entity classes
+4. Enums
+5. DTO classes
+6. Repository interfaces
+7. Service classes
+8. Controller classes
+9. Exception handling
+10. Example application.yml
+11. Example PostgreSQL schema overview
+12. Example API request/response JSON
+13. Short explanation of how Listing Service and Rental Service will use this Car Service
+
+==================================================
+13. IMPORTANT IMPLEMENTATION NOTES
+==================================================
+- Use Java 21 features where appropriate, but do not make code too advanced
+- Keep LocalDate for expiry and availability dates
+- Keep LocalDateTime for audit fields
+- Prefer BigDecimal for monetary values
+- Use UUID generation properly
+- Make the API realistic for future microservice integration
+- Make sure code compiles logically
+- Do not skip code; provide full class implementations, not only stubs
+- If response becomes too long, continue in multiple parts without dropping classes
+
+Now generate the full Car Service implementation.
