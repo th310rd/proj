@@ -1,0 +1,393 @@
+You are a Senior Java 21 / Spring Boot Microservices Engineer and Software Architect.
+
+Generate a production-style, clean, modular **User Service** for a P2P car-sharing platform similar to Turo, localized for **Uzbekistan**.
+
+Tech constraints:
+- Java 21
+- Spring Boot 3.x
+- PostgreSQL
+- Maven
+- Spring Data JPA
+- Bean Validation
+- Lombok
+- REST API
+- Docker-ready structure
+- Clean Architecture / DDD-inspired package organization
+- Use DTOs, service layer, repository layer, controller layer
+- Code must be suitable for a **graduation project defense**
+- Keep the code readable, modular, and easy to explain in viva
+
+Main scope of this service:
+1. User registration
+2. Basic authentication-ready user model
+3. Profile management
+4. Renter profile data for booking validation
+5. Owner basic profile data
+6. Driver license and experience tracking
+7. Verified profile flag for platform trust checks
+
+This service will be used by:
+- **Rental Service** for renter validation
+- **Listing Service** for renter qualification filtering
+- later **Notification Service**
+- later **Payment Service**
+- later **Auth/JWT integration**
+
+Do not over-engineer. Keep it professional but defendable for a student graduation project.
+
+==================================================
+1. BUSINESS CONTEXT
+==================================================
+This is a car-sharing platform where users can act as:
+- renter
+- owner
+- or both
+
+For now, User Service should handle:
+- user identity data
+- contact data
+- profile data
+- driving-related validation data
+- verification status
+
+Important:
+- Full OAuth/JWT security is not required yet
+- Password handling may be simple but should be structured cleanly for future improvement
+- The main goal is to expose reliable APIs for other services
+- Rental Service must be able to fetch renter validation data from this service
+- Keep design extensible for later authentication/authorization integration
+
+==================================================
+2. PROJECT STRUCTURE
+==================================================
+Create a clean package structure like:
+
+com.example.userservice
+  - controller
+  - service
+  - domain
+  - dto
+  - repository
+  - mapper
+  - exception
+  - config
+
+If feature-based organization is better, keep it simple and easy to defend.
+
+==================================================
+3. DOMAIN MODEL
+==================================================
+Design PostgreSQL entities for:
+
+A. User
+Fields:
+- id : UUID
+- firstName : String
+- lastName : String
+- email : String
+- phoneNumber : String
+- passwordHash : String
+- status : enum
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+B. UserProfile
+Fields:
+- id : UUID
+- userId : UUID
+- dateOfBirth : LocalDate
+- city : String
+- address : String nullable
+- passportNumber : String nullable
+- verifiedProfile : boolean
+- profilePhotoUrl : String nullable
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+C. DriverLicense
+Fields:
+- id : UUID
+- userId : UUID
+- licenseNumber : String
+- issuedDate : LocalDate
+- expiryDate : LocalDate
+- issuingCountry : String
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+D. UserRoleAssignment
+Fields:
+- id : UUID
+- userId : UUID
+- role : enum
+- createdAt : LocalDateTime
+
+Optional:
+You may also create a lightweight audit-friendly model if useful, but do not overcomplicate.
+
+==================================================
+4. ENUMS
+==================================================
+Generate enums for:
+- UserStatus
+- UserRole
+
+UserStatus:
+- ACTIVE
+- INACTIVE
+- BLOCKED
+- PENDING_VERIFICATION
+
+UserRole:
+- RENTER
+- OWNER
+- ADMIN
+
+==================================================
+5. DATABASE DESIGN
+==================================================
+Generate:
+- JPA entities
+- repositories
+- suggested PostgreSQL schema overview
+- useful indexes on:
+  - email (unique)
+  - phoneNumber (unique if you choose)
+  - userId in profile/license/roles
+  - status
+  - role
+
+==================================================
+6. API REQUIREMENTS
+==================================================
+Implement these REST endpoints.
+
+A. Register user
+POST /api/users/register
+
+Request:
+- firstName
+- lastName
+- email
+- phoneNumber
+- password
+- dateOfBirth
+- city
+- role(s) optional
+
+Behavior:
+- create user
+- create profile
+- assign default role RENTER if no roles provided
+- password should be stored as passwordHash (simple placeholder hashing is acceptable, but structure code so BCrypt can be added later)
+
+Response:
+- created user profile data
+
+B. Get user by id
+GET /api/users/{userId}
+
+C. Update basic profile
+PUT /api/users/{userId}/profile
+
+Request:
+- firstName
+- lastName
+- phoneNumber
+- city
+- address
+- profilePhotoUrl
+
+D. Add/update driver license
+PUT /api/users/{userId}/driver-license
+
+Request:
+- licenseNumber
+- issuedDate
+- expiryDate
+- issuingCountry
+
+E. Get renter validation profile for Rental Service
+GET /api/users/{userId}/renter-profile
+
+Response must include:
+- renterId
+- dateOfBirth
+- driverLicenseExpiry
+- drivingExperienceYears
+- verifiedProfile
+- homeCity
+
+F. Get owner basic profile
+GET /api/users/{userId}/owner-profile
+
+Response:
+- userId
+- fullName
+- phoneNumber
+- city
+- verifiedProfile
+
+G. Verify user profile
+PATCH /api/users/{userId}/verify
+
+Behavior:
+- set verifiedProfile = true
+- optionally set status = ACTIVE if appropriate
+
+H. Assign role
+POST /api/users/{userId}/roles
+
+Request:
+{
+  "role": "OWNER"
+}
+
+I. Get user roles
+GET /api/users/{userId}/roles
+
+==================================================
+7. BUSINESS RULES
+==================================================
+Implement and document these rules:
+
+1. Email must be unique
+2. Password must not be blank during registration
+3. User must be at least a reasonable minimum age (example: 18) to register
+4. Driver license expiry must not be before issued date
+5. Driving experience years should be calculated from license issued date, not manually entered
+6. Verified profile is false by default
+7. Default user status can be PENDING_VERIFICATION or ACTIVE, but document your choice clearly
+8. A user can have multiple roles
+9. Renter profile response must be optimized for Rental Service consumption
+10. Owner profile response should expose only necessary public data
+
+==================================================
+8. DTOs
+==================================================
+Generate separate DTOs for:
+- RegisterUserRequest
+- UpdateUserProfileRequest
+- UpdateDriverLicenseRequest
+- AssignRoleRequest
+- UserResponse
+- UserProfileResponse
+- DriverLicenseResponse
+- RenterProfileResponse
+- OwnerProfileResponse
+- UserRoleResponse
+
+Use Bean Validation annotations in request DTOs.
+
+==================================================
+9. SERVICE LAYER
+==================================================
+Create service classes with clear responsibilities:
+
+- UserService
+  - registerUser
+  - getUserById
+  - updateProfile
+  - verifyUser
+  - assignRole
+  - getRoles
+
+- DriverLicenseService
+  - saveOrUpdateLicense
+  - getLicenseByUserId
+  - calculateDrivingExperienceYears
+
+- ProfileQueryService
+  - getRenterProfile
+  - getOwnerProfile
+
+Ensure service-layer validation is clean and explainable.
+
+==================================================
+10. PASSWORD HANDLING
+==================================================
+Implement password handling in a simple but structured way.
+
+Requirements:
+- Store passwordHash, not raw password
+- You may use a simple PasswordEncoder bean
+- Prefer Spring PasswordEncoder interface if you want
+- If you use BCryptPasswordEncoder, that is fine
+- If you want to keep auth lightweight for now, still structure the code professionally
+
+Also generate a note explaining:
+- this service is prepared for future JWT/auth integration
+- login endpoint can be added later
+
+==================================================
+11. EXCEPTION HANDLING
+==================================================
+Generate:
+- custom exceptions
+- global exception handler using @RestControllerAdvice
+
+Need to handle:
+- resource not found
+- invalid request/business rule violation
+- duplicate email
+- invalid driver license dates
+- role already assigned
+
+Return clean JSON error responses.
+
+==================================================
+12. MAPPING
+==================================================
+Use either:
+- manual mapper classes
+or
+- MapStruct if you prefer
+
+But keep it simple and explainable for a student project.
+
+==================================================
+13. CODE STYLE
+==================================================
+Requirements:
+- clean code
+- modular
+- no unnecessary complexity
+- beginner-defensible but professional
+- add short comments only where useful
+- do not over-engineer
+- methods should be understandable in viva/defense
+
+==================================================
+14. OUTPUT FORMAT
+==================================================
+Return the result in this exact order:
+
+1. Short architecture explanation
+2. Package structure
+3. Entity classes
+4. Enums
+5. DTO classes
+6. Repository interfaces
+7. Service classes
+8. Controller classes
+9. Exception handling
+10. Password encoder configuration
+11. Example application.yml
+12. Example PostgreSQL schema overview
+13. Example API request/response JSON
+14. Short explanation of how Rental Service and Listing Service will use this User Service
+
+==================================================
+15. IMPORTANT IMPLEMENTATION NOTES
+==================================================
+- Use Java 21 features where appropriate, but do not make code too advanced
+- Keep LocalDate for date of birth and driver license dates
+- Keep LocalDateTime for audit fields
+- Prefer UUID identifiers
+- Make sure email uniqueness is enforced
+- Keep APIs realistic for future microservice integration
+- Make sure code compiles logically
+- Do not skip code; provide full class implementations, not only stubs
+- If response becomes too long, continue in multiple parts without dropping classes
+
+Now generate the full User Service implementation.
