@@ -1,0 +1,592 @@
+You are a Senior Java 21 / Spring Boot Microservices Engineer and Software Architect.
+
+Generate a production-style, clean, modular **Payment Service** for a P2P car-sharing platform similar to Turo, localized for **Uzbekistan**.
+
+Tech constraints:
+- Java 21
+- Spring Boot 3.x
+- PostgreSQL
+- Maven
+- Spring Data JPA
+- Bean Validation
+- Lombok
+- REST API
+- Docker-ready structure
+- Clean Architecture / DDD-inspired package organization
+- Use DTOs, service layer, repository layer, controller layer
+- Code must be suitable for a **graduation project defense**
+- Keep the code readable, modular, and easy to explain in viva
+
+Main scope of this service:
+1. Rental price calculation
+2. Discount and deduction handling
+3. Escrow / security deposit simulation
+4. Payment lifecycle state management
+5. APIs for Rental Service integration
+6. Ledger-style tracking for escrow events
+
+This service must integrate logically with:
+- **Rental Service**
+- later **Notification Service**
+- later **external payment gateway** if needed
+
+Do not over-engineer. Keep it professional but defendable for a student graduation project.
+
+==================================================
+1. BUSINESS CONTEXT
+==================================================
+This is a car-sharing platform where:
+- a renter books a car
+- the booking price is based on:
+  daily_rate * number_of_days
+- discounts may apply if renter satisfies owner-defined rules
+  example:
+  - if renter has 3+ years experience, apply discount
+- deductions or penalties may be added later
+  example:
+  - damage deduction
+  - late return penalty
+- a security deposit must be held in escrow
+  example:
+  - 2500 or 5000 USD equivalent, or localized value in UZS
+- the escrow deposit is not the same as the rental payment
+- the escrow deposit must be tracked with its own lifecycle
+- after successful car return:
+  - payment stays captured
+  - escrow is released
+- in accident/damage cases:
+  - all or part of escrow may be deducted
+  - escrow may move to disputed/confiscated logic
+
+Important:
+- This is a simulation service for a graduation project
+- Real bank integration is not required
+- Instead, implement realistic statuses, ledger entries, and clean business logic
+- Keep design ready for future real payment gateway integration
+
+==================================================
+2. PROJECT STRUCTURE
+==================================================
+Create a clean package structure like:
+
+com.example.paymentservice
+  - controller
+  - service
+  - domain
+  - dto
+  - repository
+  - integration
+      - rental
+  - pricing
+  - escrow
+  - exception
+  - config
+
+If feature-based organization is better, keep it simple and easy to defend.
+
+==================================================
+3. DOMAIN MODEL
+==================================================
+Design PostgreSQL entities for:
+
+A. Payment
+Fields:
+- id : UUID
+- rentalId : UUID unique
+- renterId : UUID
+- baseAmount : BigDecimal
+- discountAmount : BigDecimal
+- penaltyAmount : BigDecimal
+- finalAmount : BigDecimal
+- currency : String
+- paymentStatus : enum
+- paymentMethod : String nullable
+- externalReference : String nullable
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+- version : Long for optimistic locking
+
+B. EscrowAccount
+Fields:
+- id : UUID
+- rentalId : UUID unique
+- renterId : UUID
+- depositAmount : BigDecimal
+- currency : String
+- escrowStatus : enum
+- holdReference : String nullable
+- releaseReason : String nullable
+- createdAt : LocalDateTime
+- releasedAt : LocalDateTime nullable
+
+C. EscrowLedgerEntry
+Fields:
+- id : UUID
+- escrowAccountId : UUID
+- entryType : enum
+- amount : BigDecimal
+- description : String nullable
+- createdAt : LocalDateTime
+
+D. Optional PricingBreakdownSnapshot
+If useful, you may either:
+- keep it embedded in DTO logic
+or
+- create a dedicated entity if you think it is valuable
+But do not overcomplicate.
+
+==================================================
+4. ENUMS
+==================================================
+Generate enums for:
+- PaymentStatus
+- EscrowStatus
+- EscrowEntryType
+- PricingAdjustmentType
+
+PaymentStatus should include at minimum:
+- PENDING
+- AUTHORIZED
+- CAPTURED
+- FAILED
+- CANCELLED
+- REFUNDED
+
+EscrowStatus should include:
+- HOLD_REQUESTED
+- HELD
+- PARTIALLY_RELEASED
+- RELEASED
+- CONFISCATED
+- DISPUTED
+
+EscrowEntryType should include:
+- HOLD_CREATED
+- HOLD_INCREASED
+- PARTIAL_RELEASE
+- FULL_RELEASE
+- DAMAGE_DEDUCTION
+- LATE_FEE_DEDUCTION
+- DISPUTE_OPENED
+
+PricingAdjustmentType should include:
+- DISCOUNT
+- PENALTY
+- ESCROW_DEPOSIT
+
+==================================================
+5. DATABASE DESIGN
+==================================================
+Generate:
+- JPA entities
+- repositories
+- suggested PostgreSQL schema overview
+- useful indexes on:
+  - rentalId
+  - renterId
+  - paymentStatus
+  - escrowStatus
+  - escrowAccountId in ledger
+
+==================================================
+6. INTEGRATION CONTRACTS
+==================================================
+Generate DTOs/interfaces for integration with Rental Service.
+
+A. Rental Service client
+Need methods:
+- getRentalById(UUID rentalId)
+
+Rental snapshot should contain:
+- rentalId
+- carId
+- ownerId
+- renterId
+- startDate
+- endDate
+- requestedDailyRate
+- currency
+- status
+
+Important assumptions:
+- requestedDailyRate already comes from Rental Service snapshot
+- number of rental days must be calculated in Payment Service
+- Payment Service should validate that rental status is suitable for payment processing
+  example:
+  - payment can start only when rental is APPROVED or PAYMENT_PENDING
+- For now, external integration may be stubbed with interface + fake implementation
+- Keep interface clean for later Feign/WebClient integration
+
+==================================================
+7. PRICING LOGIC
+==================================================
+Create clean pricing logic.
+
+Implement:
+- PricingService
+- PricingCalculator
+
+Rules:
+1. Base amount = requestedDailyRate * number_of_days
+2. Number of rental days must be at least 1
+3. Apply discounts if eligible rules are passed in
+4. Add penalties if provided
+5. Final amount = baseAmount - discountAmount + penaltyAmount
+6. Escrow deposit is tracked separately from final payment amount
+7. Total authorization for checkout screen may be:
+   finalAmount + depositAmount
+   but payment and escrow must remain separate in backend domain
+
+Create DTOs for pricing breakdown.
+
+Example pricing flow:
+- dailyRate = 400000 UZS
+- days = 3
+- base = 1200000
+- discount = 100000
+- penalty = 0
+- final = 1100000
+- escrow = 30000000
+- total to authorize on UI = 31100000
+
+Generate clear, explainable code.
+
+==================================================
+8. DISCOUNT / RULE SUPPORT
+==================================================
+Design discount handling in a way that supports owner-defined rules.
+
+For now, Payment Service may accept discount inputs from caller or a pricing request DTO.
+Example:
+- "3+ years driving experience discount"
+
+Create pricing input DTO like:
+- rentalId
+- extraDiscountAmount optional
+- discountReason optional
+- penaltyAmount optional
+- penaltyReason optional
+- escrowDepositAmount
+- currency
+
+Optionally support percent-based discount if cleanly designed, but keep it simple.
+
+Document clearly:
+- rental validation belongs to Rental Service
+- financial calculation belongs to Payment Service
+
+==================================================
+9. PAYMENT LIFECYCLE
+==================================================
+Implement a simple but realistic payment lifecycle.
+
+APIs / operations:
+A. Calculate pricing
+POST /api/payments/calculate
+
+Request:
+- rentalId
+- extraDiscountAmount optional
+- discountReason optional
+- penaltyAmount optional
+- penaltyReason optional
+- escrowDepositAmount
+- currency optional
+
+Response:
+- rentalId
+- numberOfDays
+- dailyRate
+- baseAmount
+- discountAmount
+- penaltyAmount
+- finalAmount
+- escrowDepositAmount
+- totalAuthorizationAmount
+- currency
+
+B. Create payment
+POST /api/payments
+
+Behavior:
+- fetch rental snapshot
+- calculate pricing
+- create Payment with status PENDING
+- create EscrowAccount with status HOLD_REQUESTED
+- create initial escrow ledger entry HOLD_CREATED
+- return payment + escrow summary
+
+C. Authorize payment
+POST /api/payments/{paymentId}/authorize
+
+Behavior:
+- allowed only from PENDING
+- move payment status to AUTHORIZED
+- move escrow HOLD_REQUESTED to HELD
+- add/keep hold reference
+- record ledger if needed
+
+D. Capture payment
+POST /api/payments/{paymentId}/capture
+
+Behavior:
+- allowed only from AUTHORIZED
+- move to CAPTURED
+
+E. Fail payment
+POST /api/payments/{paymentId}/fail
+
+Behavior:
+- allowed from PENDING or AUTHORIZED
+- move to FAILED
+
+F. Cancel payment
+POST /api/payments/{paymentId}/cancel
+
+Behavior:
+- allowed from PENDING or AUTHORIZED
+- move to CANCELLED
+- if escrow was HELD, release it
+
+G. Refund payment
+POST /api/payments/{paymentId}/refund
+
+Behavior:
+- allowed only from CAPTURED
+- move to REFUNDED
+
+==================================================
+10. ESCROW LIFECYCLE
+==================================================
+Implement clear escrow logic.
+
+APIs / operations:
+A. Release full escrow
+POST /api/escrows/{rentalId}/release
+
+Request:
+{
+  "reason": "Vehicle returned safely"
+}
+
+Behavior:
+- allowed from HELD or PARTIALLY_RELEASED
+- mark escrow as RELEASED
+- set releasedAt
+- create FULL_RELEASE ledger entry
+
+B. Partial escrow deduction
+POST /api/escrows/{rentalId}/deduct
+
+Request:
+{
+  "amount": 500000,
+  "entryType": "DAMAGE_DEDUCTION",
+  "reason": "Scratch on front bumper"
+}
+
+Behavior:
+- allowed from HELD or PARTIALLY_RELEASED
+- amount must be positive and <= remaining deposit
+- create deduction ledger entry
+- if some balance remains, status = PARTIALLY_RELEASED
+- if entire deposit is consumed, status = CONFISCATED
+
+C. Open escrow dispute
+POST /api/escrows/{rentalId}/dispute
+
+Request:
+{
+  "reason": "Accident under investigation"
+}
+
+Behavior:
+- allowed from HELD or PARTIALLY_RELEASED
+- status = DISPUTED
+- create DISPUTE_OPENED ledger entry
+
+D. Get payment by rentalId
+GET /api/payments/rental/{rentalId}
+
+E. Get escrow by rentalId
+GET /api/escrows/{rentalId}
+
+==================================================
+11. STATE TRANSITION RULES
+==================================================
+Implement clear transition policy.
+
+Payment transitions:
+- null -> PENDING on creation
+- PENDING -> AUTHORIZED
+- AUTHORIZED -> CAPTURED
+- PENDING -> FAILED
+- AUTHORIZED -> FAILED
+- PENDING -> CANCELLED
+- AUTHORIZED -> CANCELLED
+- CAPTURED -> REFUNDED
+
+Escrow transitions:
+- null -> HOLD_REQUESTED on creation
+- HOLD_REQUESTED -> HELD on authorize
+- HELD -> PARTIALLY_RELEASED on partial deduction/release logic
+- HELD -> RELEASED
+- HELD -> CONFISCATED
+- HELD -> DISPUTED
+- PARTIALLY_RELEASED -> RELEASED
+- PARTIALLY_RELEASED -> CONFISCATED
+- PARTIALLY_RELEASED -> DISPUTED
+
+Rejected transitions must throw business exception.
+
+Create:
+- PaymentTransitionPolicy
+- EscrowTransitionPolicy
+
+==================================================
+12. DTOs
+==================================================
+Generate DTOs for:
+- CalculatePricingRequest
+- PricingBreakdownResponse
+- CreatePaymentRequest
+- PaymentResponse
+- EscrowResponse
+- PaymentSummaryResponse
+- ReleaseEscrowRequest
+- EscrowDeductionRequest
+- EscrowDisputeRequest
+- StatusTransitionResponse
+
+Use Bean Validation annotations.
+
+==================================================
+13. SERVICE LAYER
+==================================================
+Create services with clear responsibilities:
+
+- PricingService
+  - calculatePricing
+
+- PaymentApplicationService
+  - createPayment
+  - authorizePayment
+  - capturePayment
+  - failPayment
+  - cancelPayment
+  - refundPayment
+  - getPaymentByRentalId
+
+- EscrowService
+  - getEscrowByRentalId
+  - releaseEscrow
+  - deductFromEscrow
+  - openDispute
+
+- EscrowLedgerService
+  - recordEntry
+
+- PaymentTransitionPolicy
+  - ensureTransitionAllowed
+
+- EscrowTransitionPolicy
+  - ensureTransitionAllowed
+
+Keep methods clean and understandable.
+
+==================================================
+14. CONTROLLER LAYER
+==================================================
+Generate REST controllers for:
+- pricing calculation
+- payment creation and state transitions
+- escrow state operations
+- query by rentalId
+
+Possible endpoints:
+- POST /api/payments/calculate
+- POST /api/payments
+- POST /api/payments/{paymentId}/authorize
+- POST /api/payments/{paymentId}/capture
+- POST /api/payments/{paymentId}/fail
+- POST /api/payments/{paymentId}/cancel
+- POST /api/payments/{paymentId}/refund
+- GET /api/payments/rental/{rentalId}
+- GET /api/escrows/{rentalId}
+- POST /api/escrows/{rentalId}/release
+- POST /api/escrows/{rentalId}/deduct
+- POST /api/escrows/{rentalId}/dispute
+
+==================================================
+15. EXCEPTION HANDLING
+==================================================
+Generate:
+- ResourceNotFoundException
+- BusinessValidationException
+- InvalidPaymentStateException
+- InvalidEscrowStateException
+- GlobalExceptionHandler with @RestControllerAdvice
+
+Validation failure responses should be clean JSON like:
+{
+  "message": "Escrow deduction failed",
+  "errors": [
+    {
+      "code": "INVALID_ESCROW_STATE",
+      "message": "Escrow must be HELD or PARTIALLY_RELEASED"
+    }
+  ],
+  "timestamp": "..."
+}
+
+==================================================
+16. CODE STYLE
+==================================================
+Requirements:
+- clean code
+- modular
+- no unnecessary complexity
+- beginner-defensible but professional
+- use comments only where useful
+- methods should be explainable line by line in defense
+- do not skip implementations
+- provide full code, not only interfaces/stubs unless clearly marked as integration placeholder
+
+==================================================
+17. OUTPUT FORMAT
+==================================================
+Return the result in this exact order:
+
+1. Short architecture explanation
+2. Package structure
+3. Entity classes
+4. Enums
+5. DTO classes
+6. Integration DTOs and client interfaces
+7. Pricing classes
+8. Transition policy classes
+9. Repository interfaces
+10. Service classes
+11. Controller classes
+12. Exception handling
+13. Example application.yml
+14. Example PostgreSQL schema overview
+15. Example request/response JSON
+16. Short explanation of how Rental Service and Notification Service will integrate later
+
+==================================================
+18. IMPORTANT IMPLEMENTATION NOTES
+==================================================
+- Use Java 21 features where appropriate, but do not make code too advanced
+- Use LocalDate for rental dates
+- Use LocalDateTime for audit fields
+- Use UUID properly
+- Use BigDecimal for all money amounts
+- Implement optimistic locking in Payment entity
+- Keep payment and escrow clearly separated in domain model
+- Keep external integrations replaceable
+- Make sure code compiles logically
+- Do not omit key classes
+- If output is too long, continue in multiple parts without skipping code
+
+Now generate the full Payment Service implementation.
