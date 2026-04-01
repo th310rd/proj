@@ -1,0 +1,576 @@
+You are a Senior Java 21 / Spring Boot Microservices Engineer and Software Architect.
+
+Generate a production-style, clean, modular **Notification Service** for a P2P car-sharing platform similar to Turo, localized for **Uzbekistan**.
+
+Tech constraints:
+- Java 21
+- Spring Boot 3.x
+- PostgreSQL
+- Maven
+- Spring Data JPA
+- Bean Validation
+- Lombok
+- REST API
+- Docker-ready structure
+- Clean Architecture / DDD-inspired package organization
+- Use DTOs, service layer, repository layer, controller layer
+- Code must be suitable for a **graduation project defense**
+- Keep the code readable, modular, and easy to explain in viva
+
+Main scope of this service:
+1. In-app notifications
+2. Simulated email notifications
+3. Simulated SMS notifications
+4. Notification templates
+5. Notification delivery status tracking
+6. Communication bridge for owner and renter status updates
+7. Future-ready event-driven integration with Rental Service and Payment Service
+
+This service must integrate logically with:
+- **User Service**
+- **Rental Service**
+- **Payment Service**
+- later **Geo-Tracking Service**
+- later real **email/SMS providers**
+
+Do not over-engineer. Keep it professional but defendable for a student graduation project.
+
+==================================================
+1. BUSINESS CONTEXT
+==================================================
+This is a car-sharing platform where the system must notify:
+- renter
+- owner
+about important events such as:
+- booking requested
+- booking approved
+- booking rejected
+- payment pending
+- payment confirmed
+- rental started
+- rental completed
+- escrow released
+- dispute opened
+
+Important:
+- For this graduation project, real external SMS or email integration is NOT required
+- Instead, implement simulated delivery channels with clear statuses
+- Notification Service should store notifications in PostgreSQL
+- It should support later replacement with real provider integrations
+- The service should be usable both:
+  1. directly via REST API
+  2. later via asynchronous event consumption
+
+The service should also support simple owner-renter communication messages for status updates or platform messages.
+
+==================================================
+2. PROJECT STRUCTURE
+==================================================
+Create a clean package structure like:
+
+com.example.notificationservice
+  - controller
+  - service
+  - domain
+  - dto
+  - repository
+  - integration
+      - user
+      - rental
+      - payment
+  - template
+  - delivery
+  - exception
+  - config
+
+If feature-based organization is better, keep it simple and easy to defend.
+
+==================================================
+3. DOMAIN MODEL
+==================================================
+Design PostgreSQL entities for:
+
+A. Notification
+Fields:
+- id : UUID
+- recipientUserId : UUID
+- recipientEmail : String nullable
+- recipientPhone : String nullable
+- type : enum
+- channel : enum
+- subject : String nullable
+- title : String
+- message : String
+- status : enum
+- relatedEntityType : String nullable
+- relatedEntityId : UUID nullable
+- metadataJson : String nullable
+- createdAt : LocalDateTime
+- sentAt : LocalDateTime nullable
+- readAt : LocalDateTime nullable
+- failedAt : LocalDateTime nullable
+
+B. NotificationTemplate
+Fields:
+- id : UUID
+- code : String unique
+- channel : enum
+- subjectTemplate : String nullable
+- titleTemplate : String
+- bodyTemplate : String
+- active : boolean
+- createdAt : LocalDateTime
+- updatedAt : LocalDateTime
+
+C. CommunicationMessage
+Fields:
+- id : UUID
+- rentalId : UUID nullable
+- senderUserId : UUID
+- receiverUserId : UUID
+- message : String
+- messageType : enum
+- status : enum
+- createdAt : LocalDateTime
+- readAt : LocalDateTime nullable
+
+Optional:
+You may create a DeliveryAttempt entity if useful, but do not overcomplicate.
+If you do create it, keep it simple.
+
+==================================================
+4. ENUMS
+==================================================
+Generate enums for:
+- NotificationType
+- NotificationChannel
+- NotificationStatus
+- MessageType
+- MessageStatus
+
+NotificationType should include at minimum:
+- BOOKING_REQUESTED
+- BOOKING_APPROVED
+- BOOKING_REJECTED
+- PAYMENT_PENDING
+- PAYMENT_CONFIRMED
+- RENTAL_STARTED
+- RENTAL_COMPLETED
+- ESCROW_RELEASED
+- DISPUTE_OPENED
+- SYSTEM_MESSAGE
+
+NotificationChannel should include:
+- IN_APP
+- EMAIL
+- SMS
+
+NotificationStatus should include:
+- PENDING
+- SENT
+- DELIVERED
+- FAILED
+- READ
+
+MessageType should include:
+- SYSTEM
+- USER_TO_USER
+- STATUS_UPDATE
+
+MessageStatus should include:
+- SENT
+- READ
+
+==================================================
+5. DATABASE DESIGN
+==================================================
+Generate:
+- JPA entities
+- repositories
+- suggested PostgreSQL schema overview
+- useful indexes on:
+  - recipientUserId
+  - relatedEntityId
+  - type
+  - channel
+  - status
+  - template code unique
+  - rentalId for communication messages
+  - senderUserId / receiverUserId
+
+==================================================
+6. INTEGRATION CONTRACTS
+==================================================
+Generate DTOs/interfaces for integration with other services.
+
+A. User Service client
+Need methods:
+- getUserContactProfile(UUID userId)
+
+User contact profile should include:
+- userId
+- fullName
+- email
+- phoneNumber
+- verifiedProfile optional
+- city optional
+
+B. Rental Service client
+Need methods:
+- getRentalById(UUID rentalId)
+
+Rental snapshot should include:
+- rentalId
+- carId
+- ownerId
+- renterId
+- startDate
+- endDate
+- status
+
+C. Payment Service client
+Need methods:
+- getPaymentByRentalId(UUID rentalId)
+
+Payment snapshot should include:
+- paymentId
+- rentalId
+- renterId
+- finalAmount
+- currency
+- paymentStatus
+
+For now, use interfaces + stub implementations if needed.
+Keep external integrations replaceable for later Feign/WebClient usage.
+
+==================================================
+7. NOTIFICATION TEMPLATES
+==================================================
+Implement a simple template system.
+
+Requirements:
+- templates stored in database
+- template can be selected by code
+- template contains placeholders like:
+  - {ownerName}
+  - {renterName}
+  - {rentalId}
+  - {startDate}
+  - {endDate}
+  - {amount}
+  - {currency}
+- service should replace placeholders using a map of variables
+- if template is not found, service may fall back to plain text payload
+- keep template rendering simple and explainable
+- do not use advanced templating engines unless very lightweight
+
+Create:
+- TemplateRenderer
+- NotificationTemplateService
+
+==================================================
+8. DELIVERY CHANNELS
+==================================================
+Implement simulated delivery channels.
+
+Create abstractions:
+- NotificationDeliveryStrategy
+- InAppDeliveryStrategy
+- EmailDeliveryStrategy
+- SmsDeliveryStrategy
+
+Behavior:
+- IN_APP:
+  - stored in database
+  - status may become SENT or DELIVERED immediately
+- EMAIL:
+  - simulated only
+  - can log sending action
+  - mark as SENT
+- SMS:
+  - simulated only
+  - can log sending action
+  - mark as SENT
+
+Important:
+- do not integrate real providers
+- but design strategy pattern so providers can be added later
+
+==================================================
+9. MAIN API REQUIREMENTS
+==================================================
+Implement these REST endpoints.
+
+A. Send notification manually
+POST /api/notifications/send
+
+Request:
+- recipientUserId
+- channel
+- type
+- templateCode optional
+- subject optional
+- title optional
+- message optional
+- relatedEntityType optional
+- relatedEntityId optional
+- variables map optional
+
+Behavior:
+1. resolve recipient contact data from User Service if needed
+2. render message from template if templateCode exists
+3. create notification with PENDING
+4. send via selected strategy
+5. update status to SENT / FAILED
+6. return saved notification
+
+B. Send booking event notification
+POST /api/notifications/events/booking
+
+Request example:
+- rentalId
+- eventType (BOOKING_REQUESTED, BOOKING_APPROVED, BOOKING_REJECTED, RENTAL_STARTED, RENTAL_COMPLETED)
+- channel optional
+- notifyOwner boolean
+- notifyRenter boolean
+
+Behavior:
+- fetch rental data
+- fetch owner/renter contact profiles
+- build variables
+- send notifications to relevant participants
+
+C. Send payment event notification
+POST /api/notifications/events/payment
+
+Request example:
+- rentalId
+- eventType (PAYMENT_PENDING, PAYMENT_CONFIRMED, ESCROW_RELEASED, DISPUTE_OPENED)
+- channel optional
+- notifyOwner boolean
+- notifyRenter boolean
+
+Behavior:
+- fetch rental snapshot and/or payment snapshot
+- send notifications to relevant users
+
+D. Get notifications by user
+GET /api/notifications/user/{userId}
+
+Optional query params:
+- status
+- channel
+- unreadOnly
+- page
+- size
+
+E. Mark notification as read
+PATCH /api/notifications/{notificationId}/read
+
+F. Create communication message
+POST /api/communications
+
+Request:
+- rentalId optional
+- senderUserId
+- receiverUserId
+- message
+- messageType
+
+G. Get communication messages for rental
+GET /api/communications/rental/{rentalId}
+
+H. Mark communication message as read
+PATCH /api/communications/{messageId}/read
+
+I. Create/update notification template
+POST /api/notifications/templates
+PUT /api/notifications/templates/{templateId}
+
+J. Get all templates
+GET /api/notifications/templates
+
+==================================================
+10. BUSINESS RULES
+==================================================
+Implement and document these rules:
+
+1. Notification must have either templateCode or direct title/message
+2. recipientUserId is required
+3. EMAIL channel requires recipient email
+4. SMS channel requires recipient phone
+5. IN_APP can work with only recipient user ID
+6. Communication messages must have sender and receiver
+7. Communication message text must not be blank
+8. Marking as read should set readAt timestamp
+9. Only active templates should be used for rendering
+10. Booking/payment event notifications should construct meaningful default messages if template is absent
+
+==================================================
+11. EVENT-READY DESIGN
+==================================================
+Design the service so later it can consume events such as:
+- RentalCreatedEvent
+- RentalApprovedEvent
+- PaymentAuthorizedEvent
+- PaymentCapturedEvent
+- EscrowReleasedEvent
+
+For now:
+- do NOT implement Kafka/RabbitMQ unless as optional interface/placeholder
+- but structure code so event handlers can be added later
+
+Possible classes:
+- NotificationEventFacade
+- BookingNotificationService
+- PaymentNotificationService
+
+Keep it simple and explainable.
+
+==================================================
+12. DTOs
+==================================================
+Generate DTOs for:
+- SendNotificationRequest
+- NotificationResponse
+- SendBookingEventNotificationRequest
+- SendPaymentEventNotificationRequest
+- MarkReadResponse
+- CreateCommunicationMessageRequest
+- CommunicationMessageResponse
+- CreateNotificationTemplateRequest
+- UpdateNotificationTemplateRequest
+- NotificationTemplateResponse
+
+Use Bean Validation annotations.
+
+==================================================
+13. SERVICE LAYER
+==================================================
+Create services with clear responsibilities:
+
+- NotificationApplicationService
+  - sendNotification
+  - getNotificationsByUser
+  - markAsRead
+
+- BookingNotificationService
+  - sendBookingEventNotifications
+
+- PaymentNotificationService
+  - sendPaymentEventNotifications
+
+- NotificationTemplateService
+  - createTemplate
+  - updateTemplate
+  - getAllTemplates
+  - findByCode
+
+- TemplateRenderer
+  - render(...)
+
+- CommunicationService
+  - createMessage
+  - getMessagesByRentalId
+  - markMessageAsRead
+
+- NotificationDeliveryStrategy
+  - send(...)
+
+Keep service methods clean and understandable.
+
+==================================================
+14. CONTROLLER LAYER
+==================================================
+Generate REST controllers for:
+- sending notifications
+- booking/payment event notifications
+- getting notifications
+- marking notifications as read
+- communication messages
+- template CRUD endpoints
+
+Possible endpoints:
+- POST /api/notifications/send
+- POST /api/notifications/events/booking
+- POST /api/notifications/events/payment
+- GET /api/notifications/user/{userId}
+- PATCH /api/notifications/{notificationId}/read
+- POST /api/communications
+- GET /api/communications/rental/{rentalId}
+- PATCH /api/communications/{messageId}/read
+- POST /api/notifications/templates
+- PUT /api/notifications/templates/{templateId}
+- GET /api/notifications/templates
+
+==================================================
+15. EXCEPTION HANDLING
+==================================================
+Generate:
+- ResourceNotFoundException
+- BusinessValidationException
+- DeliveryFailedException
+- GlobalExceptionHandler with @RestControllerAdvice
+
+Validation failure responses should be clean JSON like:
+{
+  "message": "Notification sending failed",
+  "errors": [
+    {
+      "code": "RECIPIENT_EMAIL_MISSING",
+      "message": "Recipient email is required for EMAIL notifications"
+    }
+  ],
+  "timestamp": "..."
+}
+
+==================================================
+16. CODE STYLE
+==================================================
+Requirements:
+- clean code
+- modular
+- no unnecessary complexity
+- beginner-defensible but professional
+- use comments only where useful
+- methods should be explainable line by line in defense
+- do not skip implementations
+- provide full code, not only interfaces/stubs unless clearly marked as integration placeholder
+
+==================================================
+17. OUTPUT FORMAT
+==================================================
+Return the result in this exact order:
+
+1. Short architecture explanation
+2. Package structure
+3. Entity classes
+4. Enums
+5. DTO classes
+6. Integration DTOs and client interfaces
+7. Template/rendering classes
+8. Delivery strategy classes
+9. Repository interfaces
+10. Service classes
+11. Controller classes
+12. Exception handling
+13. Example application.yml
+14. Example PostgreSQL schema overview
+15. Example request/response JSON
+16. Short explanation of how this service can later be connected to Kafka/RabbitMQ or real providers
+
+==================================================
+18. IMPORTANT IMPLEMENTATION NOTES
+==================================================
+- Use Java 21 features where appropriate, but do not make code too advanced
+- Use LocalDateTime for audit fields
+- Use UUID properly
+- Keep notification content and delivery logic separated
+- Keep communication messages and system notifications clearly separated
+- Keep template rendering simple and readable
+- Keep external integrations replaceable
+- Make sure code compiles logically
+- Do not omit key classes
+- If output is too long, continue in multiple parts without skipping code
+
+Now generate the full Notification Service implementation.
