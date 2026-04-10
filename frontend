@@ -1,0 +1,427 @@
+You are a Senior Frontend Engineer, Senior Full-Stack Engineer, and UI Architecture Expert.
+
+Build the frontend for a **P2P car-sharing platform** similar to Turo, localized for **Uzbekistan**, as a **graduation project**.
+
+Important:
+- The frontend must work with a **microservice backend**
+- The backend services are:
+  1. User Service
+  2. Car Service
+  3. Listing Service
+  4. Rental Service
+  5. Payment Service
+  6. Notification Service
+  7. Geo-Tracking Service
+- The frontend must be clean, modular, professional, and easy to explain during graduation defense
+- Do NOT over-engineer
+- Keep the UI realistic, modern, and defendable by a student
+- The goal is a coherent frontend shell + core pages + API integration structure
+
+==================================================
+1. TECH STACK
+==================================================
+Use:
+- React
+- Vite
+- Tailwind CSS
+- React Router
+- Axios
+- TanStack Query (React Query) for server state
+- Zustand only if lightweight client state is needed
+- JavaScript or TypeScript (prefer TypeScript if cleanly structured, otherwise JavaScript is acceptable)
+- clean modular folder structure
+- reusable components
+- responsive layout
+
+==================================================
+2. PRODUCT CONTEXT
+==================================================
+This platform is a P2P car-sharing marketplace for Uzbekistan where:
+
+Owners can:
+- register cars
+- update cars
+- set daily rent rates
+- set rental rules
+- manage booking requests
+- see active rentals
+- view live/simulated vehicle tracking
+
+Renters can:
+- register and manage profile
+- search available cars
+- filter by city, dates, price, transmission, fuel, seat count
+- view car details
+- preview booking eligibility
+- request a booking
+- view checkout summary with escrow deposit
+- track booking status
+- see pickup/live vehicle location
+- receive notifications
+
+The platform supports:
+- booking validation
+- approval/rejection
+- payment + escrow
+- notifications
+- geo-tracking
+
+==================================================
+3. FRONTEND GOAL
+==================================================
+Generate a complete frontend architecture and starter implementation that includes:
+
+- app structure
+- layouts
+- routing
+- reusable UI components
+- page structure
+- API clients for backend services
+- state management approach
+- status badges and shared UI patterns
+- forms for main user flows
+- clean Tailwind styling
+- components suitable for a graduation defense demo
+
+This should be a realistic frontend shell that can be connected to the generated backend services.
+
+==================================================
+4. REQUIRED PAGES
+==================================================
+Generate the frontend with these pages:
+
+A. Public / Shared
+1. Home page
+2. Registration page
+3. Login-ready page placeholder
+4. Listing search page
+5. Car details page
+6. Notifications page
+7. Not found page
+
+B. Renter Pages
+8. My profile page
+9. My bookings page
+10. Booking checkout page
+11. Payment summary page
+12. Pickup / tracking page
+
+C. Owner Pages
+13. Owner dashboard page
+14. Owner cars page
+15. Add / edit car page
+16. Owner booking requests page
+17. Owner active rentals page
+18. Owner live tracking page
+
+==================================================
+5. REQUIRED COMPONENTS
+==================================================
+Generate reusable components such as:
+
+- Navbar
+- Sidebar (if useful for dashboard pages)
+- PageContainer
+- SectionCard
+- StatusBadge
+- CarCard
+- BookingCard
+- NotificationItem
+- PriceBreakdown
+- DateRangePicker placeholder or simple date inputs
+- SearchFilters
+- RuleList
+- EmptyState
+- LoadingState
+- ErrorState
+- Map / tracking placeholder component
+- Confirm action modal or simple confirmation UI
+- FormField wrappers where useful
+
+==================================================
+6. REQUIRED FRONTEND FLOWS
+==================================================
+Support these flows:
+
+FLOW 1: User registration
+- user enters name, email, phone, password, city, date of birth
+- submits to User Service
+
+FLOW 2: Owner adds a car
+- owner enters brand, model, year, city, color, transmission, fuel, seat count, daily rate, document expiry dates
+- optionally defines rules
+
+FLOW 3: Renter searches listings
+- renter selects city, dates, filters
+- frontend calls Listing Service
+- renders car cards
+
+FLOW 4: Renter views car details
+- show vehicle info
+- pricing
+- owner rules
+- basic availability / eligibility preview
+
+FLOW 5: Renter creates booking
+- show booking checkout summary
+- include rental price, discount, escrow deposit, total authorization amount
+- submit booking to Rental Service
+
+FLOW 6: Owner manages booking requests
+- approve or reject booking requests
+
+FLOW 7: Payment summary
+- display calculated payment breakdown and escrow amount
+
+FLOW 8: Notifications
+- show in-app notifications list
+- mark notification as read
+
+FLOW 9: Geo-tracking / pickup
+- show current location view placeholder
+- show route history placeholder
+- show owner dashboard tracking cards
+
+==================================================
+7. BACKEND INTEGRATION REQUIREMENTS
+==================================================
+Assume these backend services run locally on these ports:
+
+- user-service: 8081
+- car-service: 8082
+- listing-service: 8083
+- rental-service: 8084
+- payment-service: 8085
+- notification-service: 8086
+- geo-tracking-service: 8087
+
+Generate API client files for these services.
+
+Expected client structure:
+- src/services/api/http.js or http.ts
+- src/services/api/userClient.js
+- src/services/api/carClient.js
+- src/services/api/listingClient.js
+- src/services/api/rentalClient.js
+- src/services/api/paymentClient.js
+- src/services/api/notificationClient.js
+- src/services/api/trackingClient.js
+
+Use environment-based base URLs like:
+- VITE_USER_API_URL
+- VITE_CAR_API_URL
+- VITE_LISTING_API_URL
+- VITE_RENTAL_API_URL
+- VITE_PAYMENT_API_URL
+- VITE_NOTIFICATION_API_URL
+- VITE_TRACKING_API_URL
+
+==================================================
+8. DATA / DTO ASSUMPTIONS
+==================================================
+Design the UI based on these expected backend shapes:
+
+User-related:
+- register user
+- get user profile
+- get renter profile
+- get owner profile
+
+Car-related:
+- get owner cars
+- create/update car
+- get car by id
+- get car rules
+- update daily rate
+
+Listing-related:
+- search listings
+- get listing by carId
+- preview eligibility
+
+Rental-related:
+- create rental
+- get rentals by renter
+- get rentals by owner
+- approve/reject booking
+- confirm/start/complete/cancel/dispute
+
+Payment-related:
+- calculate pricing
+- get payment by rentalId
+- get escrow by rentalId
+
+Notification-related:
+- get notifications by user
+- mark notification as read
+
+Tracking-related:
+- get current location by rental
+- get route history
+- get owner active tracking sessions
+
+If exact DTOs vary, keep API client code adaptable and easy to modify.
+
+==================================================
+9. STATE MANAGEMENT
+==================================================
+Use this approach:
+
+- TanStack Query for server data fetching/caching
+- local component state for forms
+- optional lightweight Zustand store for:
+  - current mock user/session
+  - selected role (owner/renter)
+  - UI filters if useful
+
+Do NOT use Redux unless absolutely necessary.
+
+==================================================
+10. DESIGN / UI REQUIREMENTS
+==================================================
+The UI should be:
+- clean
+- modern
+- soft professional SaaS style
+- suitable for demo in graduation defense
+- responsive
+- easy to navigate
+- not visually overloaded
+
+Tailwind guidelines:
+- rounded-xl or rounded-2xl cards
+- light shadows
+- clean spacing
+- readable typography
+- neutral palette with one accent color
+- consistent status badge colors
+- simple dashboard layout
+- reusable card-based design
+
+Use realistic placeholders where backend integration is not complete.
+
+==================================================
+11. ROUTING REQUIREMENTS
+==================================================
+Generate a clean routing structure using React Router.
+
+Suggested routes:
+- /
+- /register
+- /login
+- /profile
+- /listings
+- /listings/:carId
+- /checkout/:carId
+- /my-bookings
+- /payment/:rentalId
+- /notifications
+- /tracking/:rentalId
+- /owner
+- /owner/cars
+- /owner/cars/new
+- /owner/cars/:carId/edit
+- /owner/bookings
+- /owner/rentals
+- /owner/tracking
+- *
+
+Create route config and app layout structure.
+
+==================================================
+12. FOLDER STRUCTURE
+==================================================
+Generate a clean folder structure like:
+
+src/
+  app/
+    router/
+    layouts/
+  pages/
+    public/
+    renter/
+    owner/
+    shared/
+  components/
+    common/
+    listings/
+    bookings/
+    payments/
+    notifications/
+    tracking/
+    forms/
+  services/
+    api/
+  hooks/
+  store/
+  utils/
+  constants/
+  styles/
+
+If you prefer a slightly different structure, keep it simple and explainable.
+
+==================================================
+13. OUTPUT FORMAT
+==================================================
+Return the result in this exact order:
+
+1. Short frontend architecture explanation
+2. Recommended folder structure
+3. Routing structure
+4. Shared layout components
+5. Reusable UI components
+6. API client structure
+7. Page-by-page implementation
+8. State management approach
+9. Tailwind design system guidance
+10. Example environment variables
+11. Example app shell code
+12. Example key page components
+13. Explanation of how frontend integrates with each backend service
+
+==================================================
+14. IMPLEMENTATION DEPTH
+==================================================
+Do not only describe the frontend.
+
+Generate real code for:
+- App shell
+- routing
+- navbar/layout
+- API client base setup
+- at least the main pages:
+  - Home page
+  - Listing search page
+  - Car details page
+  - Booking checkout page
+  - My bookings page
+  - Owner dashboard page
+  - Owner cars page
+  - Owner booking requests page
+  - Notifications page
+  - Tracking page
+- reusable components:
+  - CarCard
+  - StatusBadge
+  - PriceBreakdown
+  - NotificationItem
+  - SearchFilters
+- example form pages:
+  - Register page
+  - Add/Edit Car page
+
+Use mock-friendly code where needed, but keep the architecture ready for real backend integration.
+
+==================================================
+15. IMPORTANT RULES
+==================================================
+- Keep naming consistent
+- Keep components modular
+- Do not over-engineer
+- Do not generate random unrelated styling
+- Keep code easy to explain in defense
+- Keep API integration practical
+- Prefer realistic placeholders over unfinished complexity
+- Make the frontend coherent with the backend microservice architecture
+
+Now generate the full frontend architecture and starter implementation.
